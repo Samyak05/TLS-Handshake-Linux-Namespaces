@@ -108,19 +108,56 @@ sudo ip netns exec red openssl s_client \
 
 ## 📡 Packet Capture & Analysis
 
-Capture traffic from router interface:
+Capture traffic from router interface `veth-r1`:
 
-```bash
+### 🛠 Step 1 — Start Wireshark Correctly  
+
+Use tcpdump and open pcap in Wireshark.   
+ ```bash
 sudo ip netns exec router tcpdump -i veth-r1 -w tls_capture.pcap
 ```
+Leave it running.   
 
-Open the `.pcap` file in Wireshark.
+### 🔐 Step 2 — Start TLS Server (Blue)   
+
+In new terminal:   
+```bash
+sudo ip netns exec blue openssl s_server \
+-key blue_namespace/key.pem \
+-cert blue_namespace/cert.pem \
+-accept 4433
+```
+It should say:   
+```code
+ACCEPT
+```
+
+### 🔗 Step 3 — Start TLS Client (Red)  
+
+In another terminal:  
+```bash
+sudo ip netns exec red openssl s_client -connect 10.0.2.2:4433
+```
+Handshake will run.  
+
+### 🛑 Step 4 — Stop Capture  
+
+Press:   
+```bash
+Ctrl + C
+```
+in the tcpdump terminal   
+
+### 👀 Step 5 — Open in Wireshark   
+
+Open the `.pcap` file in Wireshark.  
 
 ### Recommended Filters
 
 ```
 tcp.port == 4433
 tls
+ssl
 ```
 
 ---
