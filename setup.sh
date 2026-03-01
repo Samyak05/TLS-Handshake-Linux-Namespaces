@@ -14,7 +14,7 @@ ip netns add blue
 ip link add veth-red type veth peer name veth-r1
 ip link add veth-blue type veth peer name veth-r2
 
-# Assign interfaces
+# Assign to namespaces
 ip link set veth-red netns red
 ip link set veth-r1 netns router
 ip link set veth-r2 netns router
@@ -36,10 +36,10 @@ ip netns exec red ip link set lo up
 ip netns exec router ip link set lo up
 ip netns exec blue ip link set lo up
 
-# Enable routing
+# Enable Routing in Router
 ip netns exec router sysctl -w net.ipv4.ip_forward=1
 
-# Default routes
+# Add Default Routes
 ip netns exec red ip route add default via 10.0.1.1
 ip netns exec blue ip route add default via 10.0.2.1
 
