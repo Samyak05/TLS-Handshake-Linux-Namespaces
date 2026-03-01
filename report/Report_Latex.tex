@@ -1,0 +1,161 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper, margin=0.7in]{geometry} 
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\captionsetup{skip=4pt}
+\usepackage{booktabs}
+\usepackage[table]{xcolor}
+\usepackage{colortbl}
+\usepackage[utf8]{inputenc}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{geometry}
+\usepackage{ragged2e}
+\geometry{a4paper, margin=0.75in}
+\usepackage{booktabs}
+\usepackage{float}
+
+\title{Capturing TCP and TLS Handshake Using Network Namespaces}
+\author{Samyak Gedam (252IS032)}
+\date{February 2026}
+
+\begin{document}
+
+\maketitle
+
+\noindent
+\textbf{Aim:}\\
+To create two network namespaces (red and blue), establish a secure HTTPS connection between them, capture the TLS 3-way handshake, and analyze the captured packets in Wireshark.\\
+
+\noindent
+\textbf{Tools Used:} \\
+Linux Network Namespaces,  OpenSSL, curl, tcpdump, Wireshark\\
+
+\noindent
+\textbf{Description:}\\
+Two network namespaces named \textbf{red} and \textbf{blue} were created and connected using virtual interfaces. The blue namespace acted as server. The red namespace acted as the client and initiated an HTTPS request using the curl command. During this communication, tcpdump was used in the blue namespace to capture the packetse and save it into a \texttt{.pcap} file. The captured file was later analyzed using Wireshark.
+
+
+\subsection*{Commands Used}
+\textbf{Certificate Generation:}
+\begin{verbatim}
+openssl genrsa -out server.key 2048
+openssl req -new -x509 -key server.key -out certificate.crt -days 365
+\end{verbatim}
+
+\noindent
+\textbf{Starting TLS Server in Blue Namespace:}
+\begin{verbatim}
+sudo ip netns exec blue openssl s_server -accept 443 \
+-cert certificate.crt -key server.key
+\end{verbatim}
+
+\noindent
+\textbf{Capturing Packets:}
+\begin{verbatim}
+sudo ip netns exec blue tcpdump -i eth1 -w tls_capture.pcap
+\end{verbatim}
+
+\noindent
+\textbf{Generating HTTPS Request from Red Namespace:}
+\begin{verbatim}
+sudo ip netns exec red curl -k https://10.0.0.2
+\end{verbatim}
+
+
+\subsection*{Screenshots:}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{Captured Traffic at server.png}
+    \caption{Captured traffic at server and stored in a pcap file}
+\end{figure}
+\clearpage
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{1.Wireshark Pcap Opening.png}
+    \caption{Opening pcap in Wireshark}
+\end{figure}
+
+\paragraph{This is a Wireshark capture of a TLS 1.3 connection between:}
+\begin{itemize}
+    \item Client: 10.0.0.1
+    \item Server: 10.0.0.2
+    \item Service Port: 443 (HTTPS)
+\end{itemize}
+
+
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{2.Initial SYN.png}
+    \caption{TCP Initial SYN}
+
+    \vspace{0.5cm}
+    \includegraphics[width=1\textwidth]{3.SYN-ACK.png}
+    \caption{TCP SYN-ACK}
+\end{figure}
+
+
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{4.Final ACK.png}
+    \caption{TCP Final ACK}
+
+    \vspace{0.5cm}
+    \includegraphics[width=1\textwidth]{5.Client Hello.png}
+    \caption{TLSv1.3  Client Hello}
+\end{figure}
+
+
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{6.Server Hello.png}
+    \caption{TLSv1.3 Server Hello}
+
+    \vspace{0.5cm}
+    \includegraphics[width=0.9\textwidth]{7.Sending encrypted data.png}
+    \caption{Encrypted Data Transfer}
+
+    After Server Hello, TLS 1.3 encrypts everything.
+
+    It's actually encrypted handshake messages like:
+    Encrypted Extensions, Certificate, Certificate Verify, Finished.
+    
+    TLS 1.3 hides handshake contents.
+\end{figure}
+
+
+
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{8.Connection Termination.png}
+    \caption{Connection Termination}
+\end{figure}
+
+
+
+\subsection*{Result}
+The TCP 3-way handshake and TLS 1.3 handshake between the red and blue namespaces were successfully captured and analyzed using Wireshark. 
+
+
+\end{document}
+
+
+
+
+
+
+
+
