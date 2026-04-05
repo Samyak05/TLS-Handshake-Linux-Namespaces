@@ -1,8 +1,8 @@
-# 🔐 TLS Handshake Analysis over Layer-3 Routing using Linux Network Namespaces
+# 🔐 TLS & Mutual TLS (mTLS) Analysis over Layer-3 Routing using Linux Network Namespaces
 
 ![Linux](https://img.shields.io/badge/Platform-Linux-blue)
 ![Networking](https://img.shields.io/badge/Domain-Computer%20Networks-green)
-![TLS](https://img.shields.io/badge/Protocol-TLS-red)
+![TLS](https://img.shields.io/badge/Protocol-TLS%20%7C%20mTLS-red)
 
 ---
 
@@ -24,6 +24,13 @@ The objective was to analyze:
 - Certificate exchange in plaintext
 - Encryption boundary after `ChangeCipherSpec`
 - TTL decrement across a router (Layer-3 proof)
+
+This project was later extended to include **Mutual TLS (mTLS)** to demonstrate
+two-way authentication, where both client and server verify each other's identity
+using certificates.
+
+This project provides a hands-on, packet-level understanding of secure communication
+mechanisms used in modern distributed systems and zero-trust architectures.
 
 ---
 
@@ -57,13 +64,19 @@ The objective was to analyze:
 
 ## ⚙️ Setup Instructions
 
-Create namespaces and routing:
+### 🔐 Generate Certificates
+
+```bash
+./generate_certs.sh
+```
+
+### 🌐 Create Namespaces and Routing
 
 ```bash
 sudo ./setup.sh
 ```
 
-Verify connectivity:
+### 🔎 Verify Connectivity
 
 ```bash
 sudo ip netns exec red ping 10.0.2.2
@@ -71,10 +84,10 @@ sudo ip netns exec red ping 10.0.2.2
 
 Expected observation:
 
-- Successful ping replies
+- Successful ping replies  
 - TTL decreases from 64 → 63 (proof of router traversal)
 
-Cleanup environment:
+### 🧹 Cleanup
 
 ```bash
 sudo ./cleanup.sh
@@ -82,21 +95,43 @@ sudo ./cleanup.sh
 
 ---
 
-## 🔐 TLS Handshake Execution (TLS 1.2)
+## 🔐 TLS Handshake Execution & Packet Capture (TLS 1.2)
 
-TLS 1.2 was explicitly enforced to observe the full handshake including `ClientKeyExchange` and `ChangeCipherSpec`.
+This section demonstrates capturing and analyzing the TLS handshake at packet level in a clean, linear workflow.
 
-### Start TLS Server (blue namespace)
+### 🛠 Step 1 — Start Packet Capture (Router)
+
+```bash
+sudo ip netns exec router tcpdump -i any -w tls_capture.pcap
+```
+
+Keep this running.
+
+---
+
+### 🔐 Step 2 — Start TLS Server (blue namespace)
+
+(Open a new terminal)
 
 ```bash
 sudo ip netns exec blue openssl s_server \
-  -key blue_namespace/key.pem \
-  -cert blue_namespace/cert.pem \
   -accept 4433 \
+  -cert /certs/server.crt \
+  -key /certs/server.key \
   -tls1_2
 ```
 
-### Start TLS Client (red namespace)
+Expected output:
+
+```
+ACCEPT
+```
+
+---
+
+### 🔗 Step 3 — Start TLS Client (red namespace)
+
+(Open another terminal)
 
 ```bash
 sudo ip netns exec red openssl s_client \
@@ -104,203 +139,242 @@ sudo ip netns exec red openssl s_client \
   -tls1_2
 ```
 
+This initiates the TLS handshake.
+
 ---
 
-## 📡 Packet Capture & Analysis
+### 🛑 Step 4 — Stop Packet Capture
 
-Capture traffic from router interface `veth-r1`:
+Press:
 
-### 🛠 Step 1 — Start Wireshark Correctly  
-
-Use tcpdump and open pcap in Wireshark.   
- ```bash
-sudo ip netns exec router tcpdump -i veth-r1 -w tls_capture.pcap
-```
-Leave it running.   
-
-### 🔐 Step 2 — Start TLS Server (Blue)   
-
-In new terminal:   
-```bash
-sudo ip netns exec blue openssl s_server \
--key blue_namespace/key.pem \
--cert blue_namespace/cert.pem \
--accept 4433
-```
-It should say:   
-```code
-ACCEPT
-```
-
-### 🔗 Step 3 — Start TLS Client (Red)  
-
-In another terminal:  
-```bash
-sudo ip netns exec red openssl s_client -connect 10.0.2.2:4433
-```
-Handshake will run.  
-
-### 🛑 Step 4 — Stop Capture  
-
-Press:   
 ```bash
 Ctrl + C
 ```
-in the tcpdump terminal   
 
-### 👀 Step 5 — Open in Wireshark   
+in the tcpdump terminal.
 
-Open the `.pcap` file in Wireshark.  
+---
 
-### Recommended Filters
+### 👀 Step 5 — Analyze in Wireshark
+
+Open the generated `.pcap` file in Wireshark.
+
+---
+
+### 🔍 Recommended Filters
 
 ```
-tcp.port == 4433
 tls
-ssl
+tcp.port == 4433
 ```
 
 ---
 
-## 🔎 Detailed Observations
+### 🔎 Key Observations (TLS)
 
-### ✅ TCP 3-Way Handshake
-
-1. SYN  
-2. SYN-ACK  
-3. ACK  
-
-Connection successfully established before TLS begins.
-
----
-
-### ✅ TLS 1.2 Handshake Flow
-
-1. ClientHello  
-2. ServerHello  
-3. Certificate (plaintext transmission)  
-4. ServerHelloDone  
-5. ClientKeyExchange  
-6. ChangeCipherSpec  
-7. Finished  
+- TCP 3-way handshake occurs before TLS begins  
+- TLS handshake messages visible:
+  - ClientHello  
+  - ServerHello  
+  - Certificate  
+  - ServerHelloDone  
+  - ClientKeyExchange  
+- Encryption starts after `ChangeCipherSpec`  
+- Subsequent packets appear as:
+  ```
+  TLS Application Data
+  ```
 
 ---
 
-### 🔐 Encryption Boundary
+## 🔐 Mutual TLS (mTLS) Execution & Packet Capture
 
-After `ChangeCipherSpec`, Wireshark displays:
+This section demonstrates mutual authentication where both client and server verify each other using certificates.
+
+### 🛠 Step 1 — Start Packet Capture (Router)
+
+```bash
+sudo ip netns exec router tcpdump -i any -w mtls_capture.pcap
+```
+
+Keep this running.
+
+---
+
+### 🔐 Step 2 — Start mTLS Server (blue namespace)
+
+```bash
+sudo ip netns exec blue openssl s_server \
+  -accept 4433 \
+  -cert /certs/server.crt \
+  -key /certs/server.key \
+  -CAfile /certs/ca.crt \
+  -Verify 1
+```
+
+---
+
+### 🔗 Step 3 — Start mTLS Client (SUCCESS CASE)
+
+```bash
+sudo ip netns exec red openssl s_client \
+  -connect 10.0.2.2:4433 \
+  -cert /certs/client.crt \
+  -key /certs/client.key \
+  -CAfile /certs/ca.crt
+```
+
+Expected result:
+
+- Handshake succeeds  
+- Client and server authenticate each other  
+
+---
+
+### ❌ Step 4 — Negative Test (Without Client Certificate)
+
+```bash
+sudo ip netns exec red openssl s_client \
+  -connect 10.0.2.2:4433 \
+  -CAfile /certs/ca.crt
+```
+
+Expected result:
+
+- Handshake fails  
+- Server rejects client  
+
+---
+
+### 🛑 Step 5 — Stop Packet Capture
+
+Press:
+
+```bash
+Ctrl + C
+```
+
+in the tcpdump terminal.
+
+---
+
+### 👀 Step 6 — Analyze in Wireshark
+
+Open the generated `.pcap` file in Wireshark.
+
+---
+
+### 🔍 Recommended Filters
+
+```
+tls
+tcp.port == 4433
+```
+
+---
+
+### 🔎 Key Observations (mTLS)
+
+- Server sends `Certificate Request`  
+- Client responds with its `Certificate`  
+- Client proves identity using `Certificate Verify`  
+- Mutual authentication is established  
+- Without client certificate → handshake failure  
+
+---
+
+## 🔐 Encryption Boundary
+
+After `ChangeCipherSpec`, Wireshark shows:
 
 ```
 TLS Application Data
 ```
 
-This confirms symmetric session key activation and encrypted communication.
+This applies to both TLS and mTLS, indicating the transition from asymmetric to symmetric encryption.
 
 ---
 
 ### 🌐 Layer-3 Routing Proof
 
-Initial TTL observed from sender: `64`  
-TTL at receiver: `63`
-
-The decrement confirms:
-
-- Packet passed through one router
-- True Layer-3 forwarding occurred
-- No direct Layer-2 bridging between namespaces
+Initial TTL: 64  
+Observed TTL: 63  
 
 ---
 
-## 🔬 Packet-Level Verification
+## 🔄 TLS vs mTLS Comparison
 
-The following were validated in Wireshark:
-
-- TCP sequence number progression
-- TLS record encapsulation inside TCP segments
-- Proper segmentation and acknowledgements
-- No broadcast leakage between subnets
-- Clear transition from asymmetric to symmetric encryption
-
----
-
-## 🔄 Cryptographic Flow Summary (TLS 1.2)
-
-1. ClientHello — proposes cipher suites
-2. ServerHello — selects cipher suite
-3. Certificate — server proves identity
-4. ClientKeyExchange — pre-master secret encrypted using RSA
-5. Both sides derive symmetric session keys
-6. ChangeCipherSpec
-7. Finished
-
-After this point, encrypted application data begins
+| Feature | TLS | mTLS |
+|--------|-----|------|
+| Server Authentication | ✅ | ✅ |
+| Client Authentication | ❌ | ✅ |
+| Certificate Exchange | One-way | Two-way |
+| Security Level | High | Very High |
+| Use Cases | HTTPS | Zero Trust, Microservices |
 
 ---
 
 ## 📁 Project Structure
 
 ```
-TLS-Handshake-Linux-Namespaces/
+network_namespaces/
 │
 ├── blue_namespace/
-│   ├── cert.pem
-│   └── key.pem   (ignored via .gitignore)
+│   ├── server.crt
+│   ├── server.key
+│   └── ca.crt
+│
+├── red_namespace/
+│   ├── client.crt
+│   ├── client.key
+│   └── ca.crt
+│
+├── ca/
+│   ├── ca.crt
+│   └── ca.key
 │
 ├── diagrams/
 │   └── topology.png
 │
 ├── screenshots/
-│   ├── 01_wireshark_pcap_opening.png
-│   ├── 02_initial_syn.png
-│   ├── 03_syn_ack.png
-│   ├── 04_final_ack.png
-│   ├── 05_client_hello.png
-│   ├── 06_server_hello.png
-│   ├── 07_sending_encrypted_data.png
-│   └── 08_connection_termination.png
 │
 ├── report/
 │   └── report.pdf
 │
 ├── setup.sh
 ├── cleanup.sh
+├── generate_certs.sh
 ├── README.md
-├── .gitignore
-└── tls_capture.pcap
+├── tls_capture.pcap
+└── mtls_capture.pcap
 ```
 
 ---
 
 ## ⚠ Security Disclaimer
 
-Self-signed certificates were used strictly for academic experimentation.
-
-In production environments:
-
-- Certificates must be issued by trusted Certificate Authorities (CA)
-- TLS 1.3 is strongly recommended
-- Private keys must never be committed to version control
+Self-signed certificates are used for educational purposes only.
 
 ---
 
 ## 🎓 Learning Outcomes
 
-- Clear distinction between Layer-2 and Layer-3 communication
-- TCP connection lifecycle understanding
-- TLS 1.2 handshake internals
-- Asymmetric → symmetric cryptographic transition
-- Practical Wireshark packet inspection
-- Realistic network simulation using Linux namespaces
+- Layer-3 routing using namespaces  
+- TCP handshake understanding  
+- TLS 1.2 internals  
+- Mutual TLS (mTLS) authentication  
+- Certificate Authority (CA) concepts  
+- Packet-level analysis with Wireshark  
 
 ---
 
 ## 🔗 Lecture Source: Network Namespaces - Session 1
-https://nitkeduin-my.sharepoint.com/:v:/g/personal/tahiliani_nitk_edu_in/EZsxo6VafiBIn3ybNUNOYPYBJ9Oe7nvBMFc81vTTC-FhtQ?e=b16yGn&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D
+https://nitkeduin-my.sharepoint.com/:v:/g/personal/tahiliani_nitk_edu_in/EZsxo6VafiBIn3ybNUNOYPYBJ9Oe7nvBMFc81vTTC-FhtQ?e=b16yGn
 
 ---
 
 ## 👨‍💻 Author
 
 Samyak Gedam  
-National Institute of Technology Surathkal, Karnataka.  
+National Institute of Technology Surathkal, Karnataka  
 Built as part of first task in mini-project course during my 2nd Semester.

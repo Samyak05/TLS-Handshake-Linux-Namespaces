@@ -1,9 +1,27 @@
 #!/bin/bash
 
+# Exit immediately if any command fails
+set -e
+
+# Get project root directory dynamically
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "Project root: $BASE_DIR"
+
+# ✅ Check if cert directories exist AND are not empty
+if [ -z "$(ls -A "$BASE_DIR/red_namespace" 2>/dev/null)" ] || \
+   [ -z "$(ls -A "$BASE_DIR/blue_namespace" 2>/dev/null)" ]; then
+    echo "❌ Certificates missing or empty."
+    echo "👉 Run: ./generate_certs.sh"
+    exit 1
+fi
+
+echo "✅ Certificates found."
+
 # Clean previous namespaces if they exist
-ip netns del red 2>/dev/null
-ip netns del router 2>/dev/null
-ip netns del blue 2>/dev/null
+ip netns del red 2>/dev/null || true
+ip netns del router 2>/dev/null || true
+ip netns del blue 2>/dev/null || true
 
 # Create namespaces
 ip netns add red
@@ -43,4 +61,13 @@ ip netns exec router sysctl -w net.ipv4.ip_forward=1
 ip netns exec red ip route add default via 10.0.1.1
 ip netns exec blue ip route add default via 10.0.2.1
 
-echo "Setup complete."
+# Create cert directories inside namespaces
+ip netns exec red mkdir -p /certs
+ip netns exec blue mkdir -p /certs
+
+# Copy certificates safely
+ip netns exec blue cp -r "$BASE_DIR/blue_namespace/." /certs/
+ip netns exec red cp -r "$BASE_DIR/red_namespace/." /certs/
+
+echo "✅ Certificates copied into namespaces."
+echo "🚀 Setup complete."
