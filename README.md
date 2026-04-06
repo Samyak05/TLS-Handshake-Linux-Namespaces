@@ -102,7 +102,7 @@ This section demonstrates capturing and analyzing the TLS handshake at packet le
 ### 🛠 Step 1 — Start Packet Capture (Router)
 
 ```bash
-sudo ip netns exec router tcpdump -i any -w tls_capture.pcap
+sudo ip netns exec router tcpdump -i any port 4433 -w tls_capture.pcap
 ```
 
 Keep this running.
@@ -136,6 +136,7 @@ ACCEPT
 ```bash
 sudo ip netns exec red openssl s_client \
   -connect 10.0.2.2:4433 \
+  -CAfile /certs/ca.crt \
   -tls1_2
 ```
 
@@ -194,7 +195,7 @@ This section demonstrates mutual authentication where both client and server ver
 ### 🛠 Step 1 — Start Packet Capture (Router)
 
 ```bash
-sudo ip netns exec router tcpdump -i any -w mtls_capture.pcap
+sudo ip netns exec router tcpdump -i any port 4433 -w mtls_capture.pcap
 ```
 
 Keep this running.
@@ -209,7 +210,8 @@ sudo ip netns exec blue openssl s_server \
   -cert /certs/server.crt \
   -key /certs/server.key \
   -CAfile /certs/ca.crt \
-  -Verify 1
+  -Verify 1 \
+  -tls1_2
 ```
 
 ---
@@ -221,7 +223,8 @@ sudo ip netns exec red openssl s_client \
   -connect 10.0.2.2:4433 \
   -cert /certs/client.crt \
   -key /certs/client.key \
-  -CAfile /certs/ca.crt
+  -CAfile /certs/ca.crt \
+  -tls1_2
 ```
 
 Expected result:
